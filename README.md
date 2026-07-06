@@ -162,6 +162,8 @@ const llmResponse = await openai.chat.completions.create({
 To consume this engine in a production Android application, compile the native libraries and orchestrate screen captures using the following architecture:
 
 ### 1. Project Setup
+UniFFI automatically generates the Kotlin interface file (e.g. `ocrust.kt`) and compiles the corresponding `.so` shared libraries.
+
 Place the compiled `.so` files into your Android project structure:
 ```
 app/src/main/jniLibs/
@@ -171,22 +173,19 @@ app/src/main/jniLibs/
   └── x86/libocrust.so
 ```
 
-Add the wrapper class [ScreenCompressor.java](android-wrapper/src/main/java/com/rfx/compressor/ScreenCompressor.java) into your source tree under package `com.rfx.compressor`.
+Include the generated `ocrust.kt` file in your Kotlin source tree (e.g. under package `uniffi.ocrust`).
 
 ### 2. Standard Capture & Packer Pipeline (Kotlin)
-On Android, you should capture the screen, run Optical Character Recognition (OCR) using Google's **ML Kit**, compress the bitmap with the NDK engine, and write the `.ocrust` JSON structure to disk.
-
-Here is a complete, production-ready pipeline:
+On Android, you capture the screen as a JPEG byte array, run Optical Character Recognition (OCR) using Google's **ML Kit**, and pass the text/metadata to `compressScreenToOcrust` to generate the complete `.ocrust` JSON string in a single step:
 
 ```kotlin
 import android.graphics.Bitmap
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import com.rfx.compressor.ScreenCompressor
-import org.json.JSONObject
+import uniffi.ocrust.compressScreenToOcrust
+import java.io.ByteArrayOutputStream
 import java.io.File
-import java.time.Instant
 
 object CapturePipeline {
 
@@ -200,49 +199,31 @@ object CapturePipeline {
             .addOnSuccessListener { visionText ->
                 val extractedText = visionText.text // Text block extracted from image
                 
-                // 2. Run the NDK Grayscale & WebP Compression Loop
-                // 640px height, 20% quality represents the sweet spot (23KB image size)
-                val compressedWebPBytes = ScreenCompressor.optimize(bitmap, 640, 20)
-                
-                // 3. Convert WebP bytes to Base64
-                val base64Image = android.util.Base64.encodeToString(
-                    compressedWebPBytes, 
-                    android.util.Base64.NO_WRAP
-                )
-                val imageDataUrl = "data:image/webp;base64,$base64Image"
+                // Convert Bitmap to JPEG byte array to send to NDK
+                val stream = ByteArrayOutputStream()
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, stream)
+                val jpegBytes = stream.toByteArray()
 
-                // 4. Construct the .ocrust JSON payload
-                val ocrustJson = JSONObject().apply {
-                    put("version", 1)
-                    put("timestamp", Instant.now().toString())
-                    
-                    put("source", JSONObject().apply {
-                        put("width", bitmap.width)
-                        put("height", bitmap.height)
-                    })
-                    
-                    put("output", JSONObject().apply {
-                        put("width", if (bitmap.height > 640) (bitmap.width * (640f / bitmap.height)).toInt() else bitmap.width)
-                        put("height", if (bitmap.height > 640) 640 else bitmap.height)
-                        put("quality", 20)
-                        put("size_bytes", compressedWebPBytes.size)
-                    })
-                    
-                    put("text", extractedText)
-                    
-                    put("context", JSONObject().apply {
-                        put("device", deviceModel)
-                        put("app", packageName)
-                    })
-                    
-                    put("image", imageDataUrl)
+                try {
+                    // 2. Compress screenshot, calculate SimHash, and format JSON in one call.
+                    // Automatically populates timestamp, width, height, and generates the 64-bit SimHash.
+                    val ocrustJson = compressScreenToOcrust(
+                        inputBytes = jpegBytes.toList(),
+                        maxHeight = 640.toLong(),
+                        quality = 20.toLong(),
+                        text = extractedText,
+                        device = deviceModel,
+                        app = packageName,
+                        osVersion = "Android 15"
+                    )
+
+                    // 3. Write .ocrust file directly to disk
+                    outputFile.writeText(ocrustJson)
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
-
-                // 5. Write .ocrust file directly to disk
-                outputFile.writeText(ocrustJson.toString())
             }
             .addOnFailureListener { e ->
-                // Handle OCR OCR errors
                 e.printStackTrace()
             }
     }
