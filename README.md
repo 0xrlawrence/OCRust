@@ -231,10 +231,13 @@ object CapturePipeline {
                         inputBytes = jpegBytes.toList(),
                         maxHeight = 640.toLong(),
                         quality = 20.toLong(),
+                        bitonal = false,
                         text = extractedText,
                         device = deviceModel,
                         app = packageName,
-                        osVersion = "Android 15"
+                        osVersion = "Android 15",
+                        embedding = null,
+                        blocks = null
                     )
 
                     // 3. Write .ocrust file directly to disk
@@ -297,6 +300,7 @@ cargo test
 * **`output_is_grayscale`**: Assures that the bilinear pipeline correctly processes inputs into Luma8 single-channel grayscale WebPs.
 * **`downscale_reduces_height`**: Cements the bounding constraint logic (proportionally resizing heights taller than `max_height`).
 * **`quality_affects_output_size`**: Asserts that compression parameters correctly affect output sizes.
+* **`bitonal_compression_works`**: Validates that enabling Otsu's thresholding quantization maps all pixels in the output image strictly to pure black (0) or pure white (255) for extreme bitonal compression.
 
 ---
 
@@ -329,10 +333,11 @@ You are an expert AI software engineer integrating the **OCRust** screen compres
 1. **Purpose**: Crate `ocrust` is an Android NDK utility (written in Rust) that downscales screenshots, converts them to single-channel grayscale (halving raw memory), and encodes them as lossy WebP at quality 20 (compression method = 6) for maximum storage savings.
 2. **UniFFI Interface**:
    OCRust exports the following native interface (generating type-safe Kotlin/JVM bindings automatically):
-   - `fun compressScreen(inputBytes: List<Byte>, maxHeight: Long, quality: Long): List<Byte>`
-   - `fun compressScreenToOcrust(inputBytes: List<Byte>, maxHeight: Long, quality: Long, text: String?, device: String?, app: String?, osVersion: String?): String`
+   - `fun compressScreen(inputBytes: List<Byte>, maxHeight: Long, quality: Long, bitonal: Boolean): List<Byte>`
+   - `fun compressScreenToOcrust(inputBytes: List<Byte>, maxHeight: Long, quality: Long, bitonal: Boolean, text: String?, device: String?, app: String?, osVersion: String?, embedding: List<Float>?, blocks: List<OcrustBlock>?): String`
    - `fun decodeOcrustText(ocrustJson: String): String?`
    - `fun decodeOcrustImage(ocrustJson: String): List<Byte>`
+   - `data class OcrustBlock(val text: String, val bounds: List<Int>, val type: String?)`
    - Native library output name: `libocrust.so` (Java namespace package: `uniffi.ocrust`)
 3. **Container Format (`.ocrust`)**:
    A pure JSON schema that packages metadata and the compressed image:
