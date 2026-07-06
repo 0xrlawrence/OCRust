@@ -181,6 +181,8 @@ fn ocrust_roundtrip_succeeds() {
             app: Some("com.test.app".to_string()),
             os_version: Some("Android 14".to_string()),
         }),
+        simhash: Some(format::calculate_simhash("Detected screen text")),
+        embedding: Some(vec![0.1, 0.2, 0.3]),
     };
 
     // Encode
@@ -216,5 +218,25 @@ fn ocrust_invalid_json_fails() {
 
     assert!(result.is_err());
 }
+
+#[test]
+fn simhash_similarity_test() {
+    use ocrust::format::{calculate_simhash, simhash_similarity};
+
+    let text1 = "best project management tools Monday.com ClickUp Wrike";
+    let text2 = "best project management tools Monday.com ClickUp Wrike extra";
+    let text3 = "completely different text about programming rust code";
+
+    let hash1 = calculate_simhash(text1);
+    let hash2 = calculate_simhash(text2);
+    let hash3 = calculate_simhash(text3);
+
+    let sim_1_2 = simhash_similarity(&hash1, &hash2).unwrap();
+    let sim_1_3 = simhash_similarity(&hash1, &hash3).unwrap();
+
+    assert!(sim_1_2 > 0.8, "Similar text should have high similarity: {}", sim_1_2);
+    assert!(sim_1_3 < 0.6, "Different text should have low similarity: {}", sim_1_3);
+}
+
 
 

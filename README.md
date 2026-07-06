@@ -95,9 +95,16 @@ The `.ocrust` format is a **pure JSON file**. It stores the compressed WebP imag
     "app": "com.android.settings",
     "os_version": "Android 15"
   },
+  "simhash": "2f65a1b3c9d8e7f0",
+  "embedding": [0.0125, -0.0456, 0.1876],
   "image": "data:image/webp;base64,UklGRvBhAABXRUJQVlA4..."
 }
 ```
+
+### 🧠 Local Semantic Search via SimHash
+Each `.ocrust` file contains a `"simhash"` signature—a 64-bit fingerprint of the screen text. This allows you to instantly determine if two screen captures are semantically similar without hitting heavy machine learning models or cloud embedding APIs:
+* **Hamming Distance**: Count the number of differing bits between two SimHashes. If the distance is low (e.g., $\le 6$), the screens are highly similar.
+* **On-Device Deduplication**: Allows timeline capture apps to drop redundant screenshots (e.g., if the user is looking at the same static page for minutes) by calculating distance between sequential captures locally.
 
 ---
 

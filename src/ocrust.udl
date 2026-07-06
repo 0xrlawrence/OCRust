@@ -1,0 +1,32 @@
+[Error]
+enum OcrustError {
+    "CompressionError",
+    "DecodingError",
+    "InvalidJson",
+};
+
+namespace ocrust {
+    [Throws=OcrustError]
+    sequence<u8> compress_screen(
+        sequence<u8> input_bytes,
+        u32 max_height,
+        u32 quality
+    );
+
+    [Throws=OcrustError]
+    string compress_screen_to_ocrust(
+        sequence<u8> input_bytes,
+        u32 max_height,
+        u32 quality,
+        string? text,
+        string? device,
+        string? app,
+        string? os_version
+    );
+
+    [Throws=OcrustError]
+    string? decode_ocrust_text(string ocrust_json);
+
+    [Throws=OcrustError]
+    sequence<u8> decode_ocrust_image(string ocrust_json);
+};

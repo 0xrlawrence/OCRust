@@ -75,6 +75,12 @@ pub struct OcrustRecord {
     /// Optional device and application context.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<ContextInfo>,
+    /// Lightweight 64-bit semantic SimHash signature (16-char hex string).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub simhash: Option<String>,
+    /// Optional high-dimensional vector embedding for semantic search.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding: Option<Vec<f32>>,
     /// Base64-encoded WebP image payload with the "data:image/webp;base64," prefix.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
@@ -94,6 +100,10 @@ pub struct OcrustMetadata {
     pub text: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<ContextInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub simhash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding: Option<Vec<f32>>,
 }
 
 /// Helper structure for decoding a complete record and separating binary image data.
@@ -122,6 +132,8 @@ pub fn encode_to_string(
         output: metadata.output.clone(),
         text: metadata.text.clone(),
         context: metadata.context.clone(),
+        simhash: metadata.simhash.clone(),
+        embedding: metadata.embedding.clone(),
         image: Some(data_url),
     };
 
@@ -176,6 +188,8 @@ pub fn decode<R: Read>(reader: &mut R) -> io::Result<DecodedRecord> {
         output: record.output,
         text: record.text,
         context: record.context,
+        simhash: record.simhash,
+        embedding: record.embedding,
     };
 
     Ok(DecodedRecord {
@@ -183,3 +197,66 @@ pub fn decode<R: Read>(reader: &mut R) -> io::Result<DecodedRecord> {
         image_data,
     })
 }
+
+/// Calculates standard FNV-1a 64-bit hash.
+fn fnv1a_hash(s: &str) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in s.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
+/// Computes a 64-bit SimHash (semantic signature) for the given text.
+/// Returns a 16-character hexadecimal string.
+pub fn calculate_simhash(text: &str) -> String {
+    let mut v = [0i32; 64];
+
+    for word in text.split_whitespace() {
+        // Clean word to ignore case, punctuation, and non-alphanumeric chars
+        let clean_word: String = word
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .flat_map(|c| c.to_lowercase())
+            .collect();
+
+        if clean_word.is_empty() {
+            continue;
+        }
+
+        let hash = fnv1a_hash(&clean_word);
+        for i in 0..64 {
+            let bit = (hash >> i) & 1;
+            if bit == 1 {
+                v[i] += 1;
+            } else {
+                v[i] -= 1;
+            }
+        }
+    }
+
+    let mut fingerprint: u64 = 0;
+    for i in 0..64 {
+        if v[i] > 0 {
+            fingerprint |= 1 << i;
+        }
+    }
+
+    format!("{:016x}", fingerprint)
+}
+
+/// Helper function to calculate Hamming distance (number of differing bits)
+/// between two 64-bit hex SimHash signatures.
+pub fn simhash_distance(hash1: &str, hash2: &str) -> Result<u32, String> {
+    let u1 = u64::from_str_radix(hash1, 16).map_err(|e| e.to_string())?;
+    let u2 = u64::from_str_radix(hash2, 16).map_err(|e| e.to_string())?;
+    Ok((u1 ^ u2).count_ones())
+}
+
+/// Helper function to calculate similarity (0.0 to 1.0) based on Hamming distance.
+pub fn simhash_similarity(hash1: &str, hash2: &str) -> Result<f32, String> {
+    let dist = simhash_distance(hash1, hash2)?;
+    Ok(1.0 - (dist as f32 / 64.0))
+}
+

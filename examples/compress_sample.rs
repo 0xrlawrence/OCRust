@@ -111,6 +111,8 @@ fn main() {
         println!("No text detected or OCR not supported on this platform.");
     }
 
+    let simhash = extracted_text.as_deref().map(ocrust::format::calculate_simhash);
+
     // Build .ocrust metadata
     let metadata = OcrustMetadata {
         version: format::FORMAT_VERSION,
@@ -129,6 +131,8 @@ fn main() {
         },
         text: extracted_text,
         context: None,
+        simhash,
+        embedding: None,
     };
 
     // Encode and write the .ocrust file

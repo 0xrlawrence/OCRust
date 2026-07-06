@@ -2,70 +2,112 @@ pub mod compressor;
 pub mod encoder;
 pub mod format;
 
-use jni::errors::ThrowRuntimeExAndDefault;
-use jni::objects::{JByteArray, JClass};
-use jni::sys::jint;
-use jni::{Env, EnvUnowned};
-
 use crate::compressor::process_image;
 use crate::encoder::encode_webp;
+use crate::format::{
+    calculate_simhash, decode, decode_metadata, encode_to_string, OcrustMetadata, OutputInfo,
+    SourceInfo, ContextInfo,
+};
 
-/// JNI entry point called from `ScreenCompressor.java`.
-///
-/// Accepts a raw image byte array (JPEG-encoded) from the Android layer,
-/// applies downscaling and grayscale conversion, then returns a lossy
-/// WebP-encoded byte array back across the JNI bridge.
-///
-/// # Arguments
-///
-/// * `input_bytes` - JPEG-encoded image bytes from `Bitmap.compress()`.
-/// * `max_height`  - Maximum pixel height for the output. Images taller
-///                   than this value are proportionally downscaled.
-/// * `quality`     - WebP lossy compression quality (0-100). Lower values
-///                   yield smaller files with more artifact degradation.
-///
-/// # Returns
-///
-/// A `jbyteArray` containing the WebP-encoded output, or an empty array
-/// on failure. Errors are thrown as `java.lang.RuntimeException` on the
-/// Java side.
-#[no_mangle]
-pub extern "system" fn Java_com_rfx_compressor_ScreenCompressor_compressScreenNative<'local>(
-    mut unowned_env: EnvUnowned<'local>,
-    _class: JClass<'local>,
-    input_bytes: JByteArray<'local>,
-    max_height: jint,
-    quality: jint,
-) -> JByteArray<'local> {
-    unowned_env
-        .with_env(|env| -> jni::errors::Result<JByteArray> {
-            compress_inner(env, &input_bytes, max_height, quality)
-                .map_err(|e| jni::errors::Error::ParseFailed(e.to_string()))
-        })
-        .resolve::<ThrowRuntimeExAndDefault>()
+uniffi::setup_scaffolding!();
+
+#[derive(Debug)]
+pub enum OcrustError {
+    CompressionError,
+    DecodingError,
+    InvalidJson,
 }
 
-/// Inner processing function that returns a `Result` so error handling
-/// stays clean and does not require early-return gymnastics.
-fn compress_inner<'local>(
-    env: &mut Env<'local>,
-    input_bytes: &JByteArray<'local>,
-    max_height: jint,
-    quality: jint,
-) -> Result<JByteArray<'local>, Box<dyn std::error::Error>> {
-    // 1. Unmarshal the Java byte array into owned Rust memory
-    let raw_pixels = env.convert_byte_array(input_bytes)?;
+impl std::error::Error for OcrustError {}
 
-    // 2. Decode, downscale, and convert to grayscale
-    let grayscale_img = process_image(&raw_pixels, max_height as u32)?;
+impl std::fmt::Display for OcrustError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CompressionError => write!(f, "Compression failed"),
+            Self::DecodingError => write!(f, "Decoding failed"),
+            Self::InvalidJson => write!(f, "Invalid JSON format"),
+        }
+    }
+}
 
-    // 3. Encode the processed image as lossy WebP
+pub fn compress_screen(
+    input_bytes: Vec<u8>,
+    max_height: u32,
+    quality: u32,
+) -> Result<Vec<u8>, OcrustError> {
+    let grayscale_img = process_image(&input_bytes, max_height)
+        .map_err(|_| OcrustError::CompressionError)?;
+
     let webp_bytes = encode_webp(&grayscale_img, quality as f32)
-        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        .map_err(|_| OcrustError::CompressionError)?;
 
-    // 4. Push the compressed bytes back across the JNI bridge
-    let output_array = env.new_byte_array(webp_bytes.len())?;
-    output_array.set_region(env, 0, bytemuck::cast_slice(&webp_bytes))?;
+    Ok(webp_bytes)
+}
 
-    Ok(output_array)
+pub fn compress_screen_to_ocrust(
+    input_bytes: Vec<u8>,
+    max_height: u32,
+    quality: u32,
+    text: Option<String>,
+    device: Option<String>,
+    app: Option<String>,
+    os_version: Option<String>,
+) -> Result<String, OcrustError> {
+    let webp_bytes = compress_screen(input_bytes.clone(), max_height, quality)?;
+
+    // Detect source dimensions from input bytes
+    let source_img = image::load_from_memory(&input_bytes)
+        .map_err(|_| OcrustError::CompressionError)?;
+    let src_w = source_img.width();
+    let src_h = source_img.height();
+
+    // Calculate final dimensions
+    let (out_h, out_w) = if src_h > max_height {
+        let ratio = max_height as f32 / src_h as f32;
+        (max_height, (src_w as f32 * ratio).round() as u32)
+    } else {
+        (src_h, src_w)
+    };
+
+    // Calculate SimHash for semantic search
+    let simhash = text.as_deref().map(calculate_simhash);
+
+    let metadata = OcrustMetadata {
+        version: format::FORMAT_VERSION,
+        timestamp: Some(chrono::Utc::now().to_rfc3339()),
+        source: SourceInfo {
+            width: src_w,
+            height: src_h,
+            format: None,
+            size_bytes: Some(input_bytes.len() as u64),
+        },
+        output: OutputInfo {
+            width: out_w,
+            height: out_h,
+            quality,
+            size_bytes: webp_bytes.len() as u64,
+        },
+        text,
+        context: Some(ContextInfo {
+            device,
+            app,
+            os_version,
+        }),
+        simhash,
+        embedding: None,
+    };
+
+    encode_to_string(&metadata, &webp_bytes).map_err(|_| OcrustError::CompressionError)
+}
+
+pub fn decode_ocrust_text(ocrust_json: String) -> Result<Option<String>, OcrustError> {
+    let mut cursor = std::io::Cursor::new(ocrust_json.as_bytes());
+    let metadata = decode_metadata(&mut cursor).map_err(|_| OcrustError::InvalidJson)?;
+    Ok(metadata.text)
+}
+
+pub fn decode_ocrust_image(ocrust_json: String) -> Result<Vec<u8>, OcrustError> {
+    let mut cursor = std::io::Cursor::new(ocrust_json.as_bytes());
+    let record = decode(&mut cursor).map_err(|_| OcrustError::InvalidJson)?;
+    Ok(record.image_data)
 }
