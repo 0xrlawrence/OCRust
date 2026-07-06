@@ -1,0 +1,23 @@
+# Build artifacts
+/target/
+/jniLibs/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Android build outputs
+android-wrapper/build/
+android-wrapper/.gradle/
+*.aar
+
+# Cargo lock is committed for reproducible builds (library best practice is
+# to omit it, but for NDK builds reproducibility matters more)

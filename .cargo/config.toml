@@ -1,0 +1,20 @@
+# Android NDK cross-compilation linker configuration.
+#
+# These paths assume the NDK is installed via Android Studio or sdkmanager.
+# Adjust ANDROID_NDK_HOME to match your local environment, or use cargo-ndk
+# which handles linker resolution automatically.
+#
+# When using cargo-ndk (recommended), this file is not strictly required.
+# It is provided for manual builds without cargo-ndk.
+
+[target.aarch64-linux-android]
+linker = "aarch64-linux-android21-clang"
+
+[target.armv7-linux-androideabi]
+linker = "armv7a-linux-androideabi21-clang"
+
+[target.x86_64-linux-android]
+linker = "x86_64-linux-android21-clang"
+
+[target.i686-linux-android]
+linker = "i686-linux-android21-clang"
