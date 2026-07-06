@@ -21,6 +21,7 @@ use image::{DynamicImage, imageops::FilterType};
 pub fn process_image(
     raw_bytes: &[u8],
     max_height: u32,
+    bitonal: bool,
 ) -> Result<DynamicImage, image::ImageError> {
     let img = image::load_from_memory(raw_bytes)?;
 
@@ -33,6 +34,67 @@ pub fn process_image(
         img
     };
 
+    let mut grayscale = scaled.into_luma8();
+
+    if bitonal {
+        apply_otsu_threshold(&mut grayscale);
+    }
+
     // Force desaturation to single-channel grayscale
-    Ok(DynamicImage::ImageLuma8(scaled.into_luma8()))
+    Ok(DynamicImage::ImageLuma8(grayscale))
+}
+
+/// Applies Otsu's binarization thresholding in place to convert a grayscale image
+/// to a 1-bit black and white (bitonal) image.
+fn apply_otsu_threshold(img: &mut image::GrayImage) {
+    let threshold = otsu_threshold(img);
+    for pixel in img.pixels_mut() {
+        pixel[0] = if pixel[0] < threshold { 0 } else { 255 };
+    }
+}
+
+/// Computes the optimal threshold value using Otsu's method.
+fn otsu_threshold(img: &image::GrayImage) -> u8 {
+    let mut histogram = [0u32; 256];
+    for pixel in img.pixels() {
+        histogram[pixel[0] as usize] += 1;
+    }
+
+    let total = img.width() * img.height();
+    let mut sum: f32 = 0.0;
+    for i in 0..256 {
+        sum += i as f32 * histogram[i] as f32;
+    }
+
+    let mut sum_b: f32 = 0.0;
+    let mut w_b: u32 = 0;
+
+    let mut var_max: f32 = 0.0;
+    let mut threshold: u8 = 128;
+
+    for i in 0..256 {
+        w_b += histogram[i];
+        if w_b == 0 {
+            continue;
+        }
+        let w_f = total - w_b;
+        if w_f == 0 {
+            break;
+        }
+
+        sum_b += i as f32 * histogram[i] as f32;
+
+        let m_b = sum_b / w_b as f32;
+        let m_f = (sum - sum_b) / w_f as f32;
+
+        // Calculate Between Class Variance
+        let var_between = w_b as f32 * w_f as f32 * (m_b - m_f) * (m_b - m_f);
+
+        if var_between > var_max {
+            var_max = var_between;
+            threshold = i as u8;
+        }
+    }
+
+    threshold
 }

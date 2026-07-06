@@ -6,7 +6,7 @@ use crate::compressor::process_image;
 use crate::encoder::encode_webp;
 use crate::format::{
     calculate_simhash, decode, decode_metadata, encode_to_string, OcrustMetadata, OutputInfo,
-    SourceInfo, ContextInfo,
+    SourceInfo, ContextInfo, OcrustBlock,
 };
 
 uniffi::setup_scaffolding!();
@@ -34,8 +34,9 @@ pub fn compress_screen(
     input_bytes: Vec<u8>,
     max_height: u32,
     quality: u32,
+    bitonal: bool,
 ) -> Result<Vec<u8>, OcrustError> {
-    let grayscale_img = process_image(&input_bytes, max_height)
+    let grayscale_img = process_image(&input_bytes, max_height, bitonal)
         .map_err(|_| OcrustError::CompressionError)?;
 
     let webp_bytes = encode_webp(&grayscale_img, quality as f32)
@@ -48,12 +49,15 @@ pub fn compress_screen_to_ocrust(
     input_bytes: Vec<u8>,
     max_height: u32,
     quality: u32,
+    bitonal: bool,
     text: Option<String>,
     device: Option<String>,
     app: Option<String>,
     os_version: Option<String>,
+    embedding: Option<Vec<f32>>,
+    blocks: Option<Vec<OcrustBlock>>,
 ) -> Result<String, OcrustError> {
-    let webp_bytes = compress_screen(input_bytes.clone(), max_height, quality)?;
+    let webp_bytes = compress_screen(input_bytes.clone(), max_height, quality, bitonal)?;
 
     // Detect source dimensions from input bytes
     let source_img = image::load_from_memory(&input_bytes)
@@ -94,7 +98,8 @@ pub fn compress_screen_to_ocrust(
             os_version,
         }),
         simhash,
-        embedding: None,
+        embedding,
+        blocks,
     };
 
     encode_to_string(&metadata, &webp_bytes).map_err(|_| OcrustError::CompressionError)

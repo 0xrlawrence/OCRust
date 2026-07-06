@@ -58,7 +58,7 @@ fn main() {
     // Run the compression pipeline with timing
     let start = Instant::now();
 
-    let grayscale_img = match process_image(&raw_bytes, max_height) {
+    let grayscale_img = match process_image(&raw_bytes, max_height, false) {
         Ok(img) => img,
         Err(e) => {
             eprintln!("Image processing failed: {}", e);
@@ -89,10 +89,9 @@ fn main() {
     let webp_path = format!("{}_compressed.webp", stem);
     let ocrust_path = format!("{}_compressed.ocrust", stem);
 
-    // Write the raw WebP file
-    if let Err(e) = fs::write(&webp_path, &webp_bytes) {
-        eprintln!("Failed to write '{}': {}", webp_path, e);
-        process::exit(1);
+    match fs::write(&webp_path, &webp_bytes) {
+        Ok(_) => println!("WebP:        {} ({} bytes)", webp_path, output_size),
+        Err(e) => eprintln!("Failed to write WebP: {}", e),
     }
 
     // Detect source dimensions from the decoded image
@@ -133,6 +132,7 @@ fn main() {
         context: None,
         simhash,
         embedding: None,
+        blocks: None,
     };
 
     // Encode and write the .ocrust file

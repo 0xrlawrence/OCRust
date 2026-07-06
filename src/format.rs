@@ -57,6 +57,18 @@ pub struct ContextInfo {
     pub os_version: Option<String>,
 }
 
+/// Bounding box layout block info for advanced RPA or layout analysis.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OcrustBlock {
+    /// Text content inside the layout block.
+    pub text: String,
+    /// Bounding coordinates: [left, top, right, bottom].
+    pub bounds: Vec<i32>,
+    /// Optional block classification type (e.g. "button", "input", "text").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r#type: Option<String>,
+}
+
 /// A complete `.ocrust` record containing metadata and the Base64 WebP image.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OcrustRecord {
@@ -81,6 +93,9 @@ pub struct OcrustRecord {
     /// Optional high-dimensional vector embedding for semantic search.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embedding: Option<Vec<f32>>,
+    /// Optional structured bounding box blocks for layout awareness.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocks: Option<Vec<OcrustBlock>>,
     /// Base64-encoded WebP image payload with the "data:image/webp;base64," prefix.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
@@ -104,6 +119,8 @@ pub struct OcrustMetadata {
     pub simhash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embedding: Option<Vec<f32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocks: Option<Vec<OcrustBlock>>,
 }
 
 /// Helper structure for decoding a complete record and separating binary image data.
@@ -134,6 +151,7 @@ pub fn encode_to_string(
         context: metadata.context.clone(),
         simhash: metadata.simhash.clone(),
         embedding: metadata.embedding.clone(),
+        blocks: metadata.blocks.clone(),
         image: Some(data_url),
     };
 
@@ -190,6 +208,7 @@ pub fn decode<R: Read>(reader: &mut R) -> io::Result<DecodedRecord> {
         context: record.context,
         simhash: record.simhash,
         embedding: record.embedding,
+        blocks: record.blocks,
     };
 
     Ok(DecodedRecord {

@@ -33,7 +33,7 @@ fn full_pipeline_produces_smaller_output() {
     let input_size = input_jpeg.len();
 
     // Run through the same pipeline Android would use
-    let processed = process_image(&input_jpeg, 1080)
+    let processed = process_image(&input_jpeg, 1080, false)
         .expect("process_image should succeed on valid JPEG input");
     let webp_output = encode_webp(&processed, 50.0)
         .expect("encode_webp should succeed on a valid DynamicImage");
@@ -68,7 +68,7 @@ fn full_pipeline_produces_smaller_output() {
 fn downscale_reduces_height() {
     let input_jpeg = generate_test_jpeg(1080, 1920, 90);
 
-    let processed = process_image(&input_jpeg, 720)
+    let processed = process_image(&input_jpeg, 720, false)
         .expect("process_image should succeed on valid JPEG input");
 
     assert_eq!(
@@ -90,7 +90,7 @@ fn downscale_reduces_height() {
 fn images_below_max_height_are_not_upscaled() {
     let input_jpeg = generate_test_jpeg(640, 480, 90);
 
-    let processed = process_image(&input_jpeg, 1080)
+    let processed = process_image(&input_jpeg, 1080, false)
         .expect("process_image should succeed on valid JPEG input");
 
     assert_eq!(
@@ -109,7 +109,7 @@ fn images_below_max_height_are_not_upscaled() {
 fn output_is_grayscale() {
     let input_jpeg = generate_test_jpeg(800, 600, 90);
 
-    let processed = process_image(&input_jpeg, 1080)
+    let processed = process_image(&input_jpeg, 1080, false)
         .expect("process_image should succeed on valid JPEG input");
 
     // The processed image should be Luma8 (single-channel grayscale)
@@ -126,7 +126,7 @@ fn output_is_grayscale() {
 fn quality_affects_output_size() {
     let input_jpeg = generate_test_jpeg(1920, 1080, 90);
 
-    let processed = process_image(&input_jpeg, 1080)
+    let processed = process_image(&input_jpeg, 1080, false)
         .expect("process_image should succeed on valid JPEG input");
 
     let low_quality = encode_webp(&processed, 20.0)
@@ -146,7 +146,7 @@ fn quality_affects_output_size() {
 fn invalid_input_returns_error() {
     let garbage = vec![0u8, 1, 2, 3, 4, 5];
 
-    let result = process_image(&garbage, 1080);
+    let result = process_image(&garbage, 1080, false);
     assert!(
         result.is_err(),
         "process_image should return Err for invalid image data",
@@ -183,6 +183,11 @@ fn ocrust_roundtrip_succeeds() {
         }),
         simhash: Some(format::calculate_simhash("Detected screen text")),
         embedding: Some(vec![0.1, 0.2, 0.3]),
+        blocks: Some(vec![format::OcrustBlock {
+            text: "ButtonText".to_string(),
+            bounds: vec![10, 20, 100, 50],
+            r#type: Some("button".to_string()),
+        }]),
     };
 
     // Encode
@@ -236,6 +241,25 @@ fn simhash_similarity_test() {
 
     assert!(sim_1_2 > 0.8, "Similar text should have high similarity: {}", sim_1_2);
     assert!(sim_1_3 < 0.6, "Different text should have low similarity: {}", sim_1_3);
+}
+
+#[test]
+fn bitonal_compression_works() {
+    let input_jpeg = generate_test_jpeg(100, 100, 90);
+    
+    // Process with bitonal = true
+    let processed = process_image(&input_jpeg, 100, true)
+        .expect("process_image with bitonal should succeed");
+
+    // All pixels in the output must be exactly 0 (black) or 255 (white)
+    if let DynamicImage::ImageLuma8(img) = processed {
+        for pixel in img.pixels() {
+            let val = pixel[0];
+            assert!(val == 0 || val == 255, "Pixel value must be bitonal (0 or 255), got {}", val);
+        }
+    } else {
+        panic!("Expected ImageLuma8");
+    }
 }
 
 

@@ -97,16 +97,30 @@ The `.ocrust` format is a **pure JSON file**. It stores the compressed WebP imag
   },
   "simhash": "2f65a1b3c9d8e7f0",
   "embedding": [0.0125, -0.0456, 0.1876],
+  "blocks": [
+    { "text": "Settings", "bounds": [10, 50, 100, 80], "type": "button" }
+  ],
   "image": "data:image/webp;base64,UklGRvBhAABXRUJQVlA4..."
 }
 ```
 
-### 🧠 Local Semantic Search via SimHash
-Each `.ocrust` file contains a `"simhash"` signature—a 64-bit fingerprint of the screen text. This allows you to instantly determine if two screen captures are semantically similar without hitting heavy machine learning models or cloud embedding APIs:
-* **Hamming Distance**: Count the number of differing bits between two SimHashes. If the distance is low (e.g., $\le 6$), the screens are highly similar.
-* **On-Device Deduplication**: Allows timeline capture apps to drop redundant screenshots (e.g., if the user is looking at the same static page for minutes) by calculating distance between sequential captures locally.
+### Layout-Aware Bounding Box Hierarchy (blocks)
+The optional `"blocks"` list structures individual text elements on the screen with spatial bounding coordinates and element types. This transforms raw text extraction into a document layout hierarchy consumable by action-oriented RPA agents:
+* **Format**: Each block contains a `text` string, a `bounds` integer array `[left, top, right, bottom]`, and an optional classification string `type`.
 
-### ⚡ Architectural Upgrades: UniFFI vs. Manual JNI
+### Native Otsu Bitonal Binarization (bitonal)
+OCRust includes a native Otsu thresholding module to convert images into a 1-bit black and white (bitonal) state before encoding:
+* **Extreme Compression**: Dropping from Luma8 grayscale to bitonal pixels reduces output container sizes to single-digit limits (e.g. 4KB to 8KB) while preserving full text readability for background text logs.
+
+### On-Device Embeddings (embedding)
+The schema supports direct storage of high-dimensional vector embeddings under the `"embedding"` key. This enables local on-device vector search databases to index and search screen context maps without separate file orchestration.
+
+### Local Semantic Search via SimHash
+Each `.ocrust` file contains a `"simhash"` signature: a 64-bit fingerprint of the screen text. This allows you to instantly determine if two screen captures are semantically similar without hitting heavy machine learning models or cloud embedding APIs:
+* **Hamming Distance**: Count the number of differing bits between two SimHashes. If the distance is low (e.g. less than or equal to 6), the screens are highly similar.
+* **On-Device Deduplication**: Allows timeline capture apps to drop redundant screenshots (e.g. if the user is looking at the same static page for minutes) by calculating distance between sequential captures locally.
+
+### Architectural Upgrades: UniFFI vs. Manual JNI
 OCRust utilizes **UniFFI** to generate its cross-language interface bindings. This provides several architectural advantages:
 * **Zero JNI Boilerplate**: Manual type conversions, memory casting, and JNI function signatures are eliminated. The entire boundary is type-safe and compile-time validated.
 * **Full Native Orchestration**: The entire packaging pipeline (grayscaling, downscaling, lossy WebP compression, Base64 conversion, and minified JSON packaging) is handled **entirely in Rust**.

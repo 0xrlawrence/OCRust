@@ -5,12 +5,19 @@ enum OcrustError {
     "InvalidJson",
 };
 
+dictionary OcrustBlock {
+    string text;
+    sequence<i32> bounds;
+    string? type;
+};
+
 namespace ocrust {
     [Throws=OcrustError]
     sequence<u8> compress_screen(
         sequence<u8> input_bytes,
         u32 max_height,
-        u32 quality
+        u32 quality,
+        boolean bitonal
     );
 
     [Throws=OcrustError]
@@ -18,10 +25,13 @@ namespace ocrust {
         sequence<u8> input_bytes,
         u32 max_height,
         u32 quality,
+        boolean bitonal,
         string? text,
         string? device,
         string? app,
-        string? os_version
+        string? os_version,
+        sequence<float>? embedding,
+        sequence<OcrustBlock>? blocks
     );
 
     [Throws=OcrustError]
