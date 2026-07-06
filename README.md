@@ -106,6 +106,12 @@ Each `.ocrust` file contains a `"simhash"` signature—a 64-bit fingerprint of t
 * **Hamming Distance**: Count the number of differing bits between two SimHashes. If the distance is low (e.g., $\le 6$), the screens are highly similar.
 * **On-Device Deduplication**: Allows timeline capture apps to drop redundant screenshots (e.g., if the user is looking at the same static page for minutes) by calculating distance between sequential captures locally.
 
+### ⚡ Architectural Upgrades: UniFFI vs. Manual JNI
+OCRust utilizes **UniFFI** to generate its cross-language interface bindings. This provides several architectural advantages:
+* **Zero JNI Boilerplate**: Manual type conversions, memory casting, and JNI function signatures are eliminated. The entire boundary is type-safe and compile-time validated.
+* **Full Native Orchestration**: The entire packaging pipeline (grayscaling, downscaling, lossy WebP compression, Base64 conversion, and minified JSON packaging) is handled **entirely in Rust**.
+* **Minimal GC Overhead**: All allocations for WebP encoding, string building, and base64 mapping happen outside the JVM heap, preventing Android garbage collection pauses.
+
 ---
 
 ## 🤖 How AI Agents & Backends Consume `.ocrust`
@@ -261,6 +267,25 @@ The repository includes an automated build action in `.github/workflows/release.
 
 ---
 
+## 🧪 Automated Testing Suite
+
+OCRust contains a robust suite of unit and integration tests verifying processing guarantees, quality factors, and semantic operations.
+
+### Running Tests
+Run the entire suite locally:
+```bash
+cargo test
+```
+
+### What is Verified
+* **`simhash_similarity_test`**: Ensures similar screen text segments result in high SimHash matching scores ($>0.8$) while unrelated texts fall within random distribution bounds ($<0.6$).
+* **`ocrust_roundtrip_succeeds`**: Validates the correct parsing, encoding, and base64-reconstruction of `.ocrust` JSON files.
+* **`output_is_grayscale`**: Assures that the bilinear pipeline correctly processes inputs into Luma8 single-channel grayscale WebPs.
+* **`downscale_reduces_height`**: Cements the bounding constraint logic (proportionally resizing heights taller than `max_height`).
+* **`quality_affects_output_size`**: Asserts that compression parameters correctly affect output sizes.
+
+---
+
 ## 🔗 Dependencies
 
 | Crate | Version | Purpose |
@@ -288,10 +313,13 @@ You are an expert AI software engineer integrating the **OCRust** screen compres
 
 ### Key Facts:
 1. **Purpose**: Crate `ocrust` is an Android NDK utility (written in Rust) that downscales screenshots, converts them to single-channel grayscale (halving raw memory), and encodes them as lossy WebP at quality 20 (compression method = 6) for maximum storage savings.
-2. **JNI Signature**:
-   `private static native byte[] compressScreenNative(byte[] inputBytes, int maxHeight, int quality);`
-   - Loaded from native library: `"ocrust"` (outputs: `libocrust.so`)
-   - Java API: `com.rfx.compressor.ScreenCompressor.optimize(Bitmap bitmap, int maxHeight, int quality)`
+2. **UniFFI Interface**:
+   OCRust exports the following native interface (generating type-safe Kotlin/JVM bindings automatically):
+   - `fun compressScreen(inputBytes: List<Byte>, maxHeight: Long, quality: Long): List<Byte>`
+   - `fun compressScreenToOcrust(inputBytes: List<Byte>, maxHeight: Long, quality: Long, text: String?, device: String?, app: String?, osVersion: String?): String`
+   - `fun decodeOcrustText(ocrustJson: String): String?`
+   - `fun decodeOcrustImage(ocrustJson: String): List<Byte>`
+   - Native library output name: `libocrust.so` (Java namespace package: `uniffi.ocrust`)
 3. **Container Format (`.ocrust`)**:
    A pure JSON schema that packages metadata and the compressed image:
    ```json
