@@ -1,23 +1,18 @@
 use image::DynamicImage;
+
+#[cfg(not(target_arch = "wasm32"))]
 use webp::{Encoder, WebPConfig};
 
-/// Encodes a `DynamicImage` into a lossy WebP byte vector.
+/// Encodes a `DynamicImage` into a WebP byte vector.
 ///
-/// Uses the `webp` crate (FFI bindings to Google's `libwebp`) for encoding.
-/// The `quality` parameter controls the lossy compression aggressiveness:
-///
-/// - `100.0` = maximum visual fidelity, larger file size.
-/// -  `50.0` = good balance for screen capture archival.
-/// -  `20.0` = aggressive compression, visible block artifacts.
-///
-/// Grayscale (Luma8) images are converted to RGB before encoding because
-/// libwebp does not accept single-channel input. The visual output remains
-/// grayscale since all three channels carry the same luminance value.
+/// Under desktop/NDK targets, it uses the `webp` crate (FFI bindings to Google's `libwebp`) for lossy encoding.
+/// Under wasm32 targets, it compiles out-of-the-box using the pure-Rust `image` crate WebP encoder.
 ///
 /// # Errors
 ///
 /// Returns an error string if the encoder cannot be constructed from the
 /// provided image.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn encode_webp(
     image: &DynamicImage,
     quality: f32,
@@ -39,4 +34,18 @@ pub fn encode_webp(
         .map_err(|e| format!("WebP encoding failed: {:?}", e))?;
 
     Ok(webp_memory.to_vec())
+}
+
+/// Fallback WebP encoder implementation for wasm32 using pure Rust image codecs.
+#[cfg(target_arch = "wasm32")]
+pub fn encode_webp(
+    image: &DynamicImage,
+    _quality: f32,
+) -> Result<Vec<u8>, String> {
+    use image::codecs::webp::WebPEncoder;
+    let mut buffer = Vec::new();
+    let encoder = WebPEncoder::new_lossless(&mut buffer);
+    image.write_with_encoder(encoder)
+        .map_err(|e| format!("Wasm WebP encoding failed: {}", e))?;
+    Ok(buffer)
 }

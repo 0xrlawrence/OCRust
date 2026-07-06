@@ -116,3 +116,73 @@ pub fn decode_ocrust_image(ocrust_json: String) -> Result<Vec<u8>, OcrustError> 
     let record = decode(&mut cursor).map_err(|_| OcrustError::InvalidJson)?;
     Ok(record.image_data)
 }
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn compress_screen_wasm(
+    input_bytes: Vec<u8>,
+    max_height: u32,
+    quality: u32,
+    bitonal: bool,
+) -> Result<Vec<u8>, JsValue> {
+    compress_screen(input_bytes, max_height, quality, bitonal)
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn compress_screen_to_ocrust_wasm(
+    input_bytes: Vec<u8>,
+    max_height: u32,
+    quality: u32,
+    bitonal: bool,
+    text: Option<String>,
+    device: Option<String>,
+    app: Option<String>,
+    os_version: Option<String>,
+) -> Result<String, JsValue> {
+    compress_screen_to_ocrust(
+        input_bytes,
+        max_height,
+        quality,
+        bitonal,
+        text,
+        device,
+        app,
+        os_version,
+        None,
+        None,
+    )
+    .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn decode_ocrust_text_wasm(ocrust_json: String) -> Result<Option<String>, JsValue> {
+    decode_ocrust_text(ocrust_json)
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn decode_ocrust_image_wasm(ocrust_json: String) -> Result<Vec<u8>, JsValue> {
+    decode_ocrust_image(ocrust_json)
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn calculate_simhash_wasm(text: String) -> String {
+    format::calculate_simhash(&text)
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn simhash_similarity_wasm(hash1: String, hash2: String) -> Result<f32, JsValue> {
+    format::simhash_similarity(&hash1, &hash2)
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+

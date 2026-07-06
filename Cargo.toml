@@ -14,14 +14,17 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 jni = { version = "0.22", default-features = false }
-image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
-webp = "0.3"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 bytemuck = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = "0.4"
 base64 = "0.22"
 uniffi = { version = "0.28", features = ["cli"] }
+wasm-bindgen = "0.2"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+webp = "0.3"
 
 [build-dependencies]
 uniffi_build = "0.28"
@@ -43,3 +46,7 @@ lto = true
 codegen-units = 1
 strip = true
 panic = "abort"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
